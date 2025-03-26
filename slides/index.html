@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Programming Assignment 4</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Merlin Balihaxi (/’mɜːːːː.lɪn/)" />
+    <script src="libs/header-attrs-2.29/header-attrs.js"></script>
+    <link href="libs/remark-css-0.0.1/rutgers.css" rel="stylesheet" />
+    <link href="libs/remark-css-0.0.1/rutgers-fonts.css" rel="stylesheet" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+.title[
+# Programming Assignment 4
+]
+.subtitle[
+## ⚔<br/>always remember to remember the template’s origin: XARINGAN
+]
+.author[
+### Merlin Balihaxi (/’mɜːːːː.lɪn/)
+]
+.institute[
+### Data Science Class, Rutgers University
+]
+.date[
+### 2025-03-25 (updated: 2025-03-26)
+]
+
+---
+
+# loading data_raw.csv
+
+``` r
+data_raw &lt;- read.csv("../data_raw/fricatives/fricatives.csv")
+head(data_raw)
+```
+
+```
+##   obs    s_cog s_skewness   sh_cog sh_skewness
+## 1   1 3285.300   2.724530 2556.033    2.305261
+## 2   2 3510.648   3.093099 2781.147    2.472007
+## 3   3 4029.248   3.331941 2978.726    2.475432
+## 4   4 4122.940   2.995289 2997.093    2.449014
+## 5   5 4664.371   2.875139 3020.310    2.649265
+## 6   6 4679.532   3.839298 3096.510    2.777500
+```
+#### codebook (copied from README.md)
+- obs: (character), observation number
+- s_cog: (numeric), center of gravity measurement in Hz for [s].
+- s_skewness: (numeric), skewness measurement for [s].
+- sh_cog: (numeric), center of gravity measurement in Hz for [ʃ].
+- sh_skewness: (numeric), skewness measurement for [ʃ].
+
+---
+# tidying data_raw
+The data has two categories, **centre of gravity** and **skewness** of the **phonemes** [s] and [ʃ].
+
+So we need to tidy the data to thre main variables. *phoneme* (s and ʃ), *cog* (numeric) and *skewness* (numeric).
+
+I do not know if *pivot_long()* function can be used twice or not, so I first make it from wide to "all long", then split from it two new values **cog** and **skewness** by *pivot_wider()* function
+
+``` r
+library(tidyverse)
+library(dplyr)
+library("ds4ling")
+data_tidy &lt;- data_raw |&gt; 
+  pivot_longer(
+    cols = c('s_cog', 'sh_cog', 's_skewness', 'sh_skewness'),
+    names_to = c('phoneme', 'measure'),
+    names_sep = "_"
+  ) |&gt;
+  pivot_wider(
+    names_from = measure,
+    values_from = value
+)
+```
+
+---
+# writing data_tidy.csv
+LONG LIVE **GPT**!
+
+I used write.csv long time ago, yet I forgot the format.
+
+[REVISIT YOUR CODE MORE OFTEN!]
+
+``` r
+write.csv(data_tidy, "../data_tidy/data_tidy.csv", row.names = FALSE)
+head(data_tidy)
+```
+
+```
+## # A tibble: 6 × 4
+##     obs phoneme   cog skewness
+##   &lt;int&gt; &lt;chr&gt;   &lt;dbl&gt;    &lt;dbl&gt;
+## 1     1 s       3285.     2.72
+## 2     1 sh      2556.     2.31
+## 3     2 s       3511.     3.09
+## 4     2 sh      2781.     2.47
+## 5     3 s       4029.     3.33
+## 6     3 sh      2979.     2.48
+```
+---
+
+# descriptive statistics
+
+``` r
+des_sta &lt;- function(x) {
+  cat("Mean:", mean(x), "\n")
+  cat("SD:", sd(x), "\n")
+  cat("Min:", min(x), "\n")
+  cat("Max:", max(x), "\n")
+  cat("Median:", median(x), "\n")
+} # currently I do not know how to add *group_by()* in a function.
+```
+
+``` r
+des_sta (data_tidy$cog) # descriptive statistics for centre of gravity (Hz)
+```
+
+```
+## Mean: 4847.155 
+## SD: 1101.193 
+## Min: 2556.033 
+## Max: 7095.281 
+## Median: 4876.153
+```
+
+``` r
+des_sta (data_tidy$skewness)  # descriptive statistics for skewness
+```
+
+```
+## Mean: 3.429512 
+## SD: 0.5675383 
+## Min: 2.101727 
+## Max: 4.751733 
+## Median: 3.457987
+```
+---
+
+# boxplot for *centre of gravity* ~ *phoneme*
+
+``` r
+data_tidy |&gt;
+  ggplot() +
+  aes(x = phoneme, y = cog) +
+  geom_boxplot() +
+  labs( x = 'Phoneme', y = 'Centre of Gravity (Hz)') +
+  ggtitle("Centre of Gravity by Phoneme")
+```
+
+![](index_files/figure-html/boxplot for phoneme and centre of gravity-1.png)&lt;!-- --&gt;
+---
+
+# *stat_summary()* for *skewness* ~ *phoneme*
+
+``` r
+data_tidy |&gt;
+  ggplot() +
+  aes(x = phoneme, y = skewness) +
+  stat_summary(
+    fun.data = mean_sdl,
+    geom = 'pointrange'
+  ) +
+  labs( x = 'Phoneme', y = 'skewness') +
+  ggtitle('skewness by Phoneme')
+```
+
+![](index_files/figure-html/boxplot for phoneme and skewness-1.png)&lt;!-- --&gt;
+---
+
+# linear model of *cog* ~ *skewness* for [s]
+Firstly, the required data needs to be filtered.
+
+
+``` r
+s_data &lt;- data_tidy |&gt;
+  filter(phoneme == 's') |&gt;
+  select(phoneme, skewness, cog)
+head(s_data)
+```
+
+```
+## # A tibble: 6 × 3
+##   phoneme skewness   cog
+##   &lt;chr&gt;      &lt;dbl&gt; &lt;dbl&gt;
+## 1 s           2.72 3285.
+## 2 s           3.09 3511.
+## 3 s           3.33 4029.
+## 4 s           3.00 4123.
+## 5 s           2.88 4664.
+## 6 s           3.84 4680.
+```
+We might need **ln(centre of gravity)** to decrease the effect of the huge variance of *cog*. The next two pages are on this issue.
+---
+
+# linear model of *cog* ~ *skewness* for [s]
+
+``` r
+mod1 &lt;- lm(data = s_data, cog ~ skewness)
+summary(mod1)
+```
+
+```
+## 
+## Call:
+## lm(formula = cog ~ skewness, data = s_data)
+## 
+## Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -996.88 -254.05  -25.71  278.99 1020.41 
+## 
+## Coefficients:
+##             Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept)   -756.7      532.1  -1.422    0.161    
+## skewness      1675.6      139.4  12.022 4.37e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Residual standard error: 419.4 on 48 degrees of freedom
+## Multiple R-squared:  0.7507,	Adjusted R-squared:  0.7455 
+## F-statistic: 144.5 on 1 and 48 DF,  p-value: 4.373e-16
+```
+The intercept is not statistically significant (p = 0.161), meaning the mean of *cog* is not different from 0 when *skewness* = 0 (`\(H_0\)` not rejected).
+---
+
+# diagnostics I
+
+``` r
+ds4ling::diagnosis(mod1)
+```
+
+![](index_files/figure-html/unnamed-chunk-10-1.png)&lt;!-- --&gt;
+- The residuals spread widely (plot 1)
+- The histogram is not that bell-shaped (plot 2)
+- The tails are deviant from the baseline (plot 3)
+- I think I am making up stuff, but I insist using *ln(cog)* instead of *cog*
+
+---
+# linear model of *ln(cog)* ~ *skewness* for [s]
+#### A model after data transformation from *cog* to *ln(cog)*
+
+``` r
+mod2 &lt;- lm(data = s_data, log(cog) ~ skewness)
+summary(mod2)
+```
+
+```
+## 
+## Call:
+## lm(formula = log(cog) ~ skewness, data = s_data)
+## 
+## Residuals:
+##       Min        1Q    Median        3Q       Max 
+## -0.231296 -0.048816  0.005194  0.048746  0.199509 
+## 
+## Coefficients:
+##             Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept)  7.40746    0.10898   67.97  &lt; 2e-16 ***
+## skewness     0.31922    0.02854   11.18 5.74e-15 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Residual standard error: 0.0859 on 48 degrees of freedom
+## Multiple R-squared:  0.7227,	Adjusted R-squared:  0.7169 
+## F-statistic: 125.1 on 1 and 48 DF,  p-value: 5.741e-15
+```
+---
+
+# scatterplot for *ln(cog)* ~ *skewness* for [s]
+
+``` r
+s_data |&gt;
+  ggplot() +
+  aes(x = skewness, y = log(cog)) +
+  geom_point() +
+  geom_smooth(method = 'lm', formula = y ~ x)
+```
+
+![](index_files/figure-html/unnamed-chunk-12-1.png)&lt;!-- --&gt;
+#### The scatterplot shows that, for **phoneme [s]**, *ln(cog)* increases when *skewness* increases (positively related).
+
+---
+
+# diagnostics II
+
+``` r
+ds4ling::diagnosis(mod2)
+```
+
+![](index_files/figure-html/unnamed-chunk-13-1.png)&lt;!-- --&gt;
+- Now the model fits better (**really?**)
+- The residuals spread more narrowly (plot 1)
+- The histogram is nearly bell-shaped (plot 2, **really?**)
+- The tails not that deviant from the baseline (plot 3, **not ture!**)
+---
+
+# results of model 2 (*mod2*)
+A linear model (*mod2*) is fit to examine the relation between *centre of gravity* and *skewness* in terms of **phoneme [s]**. 
+
+The model is **statistically significant** (`\(F = 125.1\)`, `\(p &lt; 0.001\)`) and the current predictors have explained 72.27% of the variance in *ln(cog)* (`\(R^2 = 0.7227\)`, `\(Adjusted\)` `\(R^2 = 0.7169\)`).
+
+The model reveals that *skewness* of [s] is **positively related** to the *log value* of its *centre of gravity* and the relation is statistically significant [ `\(Es = 0.31922\)`, `\(SE = 0.02854\)`, `\(t = 11.18\)`, `\(p &lt; 0.001\)`]. This means that for phoneme [s], the increase of *skewness* by 1 unit incurs an increase of *ln(cog)* by 0.31922, or an increase of *cog* by 37.6% (`\(e^{0.31922} = 1.37605\)`). The *intercept* is statistically significant [ `\(Es = 7.40746\)`, `\(SE = 0.10898\)`, `\(t = 67.97\)`, `\(p &lt; 0.001\)`], meaning when *skewness* = 0, the mean of *ln(cog)* is 7.40746 or *cog* is 1648.235 Hz (`\(e^{7.40746}\)`).
+---
+
+#loading assumptions.csv
+
+``` r
+assumptions &lt;- read.csv("../data_raw/fricatives/assumptions.csv")
+head(assumptions)
+```
+
+```
+##         x       y
+## 1 55.3846 97.1795
+## 2 51.5385 96.0256
+## 3 46.1538 94.4872
+## 4 42.8205 91.4103
+## 5 40.7692 88.3333
+## 6 38.7179 84.8718
+```
+---
+
+# scatterplot for assumptions.csv
+
+``` r
+assumptions |&gt;
+  ggplot() +
+  aes(x = x, y = y) +
+  geom_point()
+```
+
+![](index_files/figure-html/unnamed-chunk-15-1.png)&lt;!-- --&gt;
+#### It's a **DINoSAUR**! [▶️ Watch on YouTube](https://www.youtube.com/watch?v=8Oz7DG76ibY)
+---
+
+# why it is not appropriate to fit a model
+
+``` r
+mod3 &lt;- lm(data = assumptions, y ~ x)
+ds4ling::diagnosis(mod3)
+```
+
+![](index_files/figure-html/unnamed-chunk-16-1.png)&lt;!-- --&gt;
+- visually, it is a dinosaur if we do the scatterplot
+- the residuals plot shows the spreading is very random...
+- the histogram shows it is not bell-shaped at all
+- the QQ-plot shows that the data at two ends highly deviate from the baseline
+---
+
+class: center, middle
+
+# Thanks!
+
+slides created via the R package [**xaringan**](https://github.com/yihui/xaringan)
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+  "highlightStyle": "github",
+  "highlightLines": true,
+  "countIncrementalSlides": false
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+// add `data-at-shortcutkeys` attribute to <body> to resolve conflicts with JAWS
+// screen reader (see PR #262)
+(function(d) {
+  let res = {};
+  d.querySelectorAll('.remark-help-content table tr').forEach(tr => {
+    const t = tr.querySelector('td:nth-child(2)').innerText;
+    tr.querySelectorAll('td:first-child .key').forEach(key => {
+      const k = key.innerText;
+      if (/^[a-z]$/.test(k)) res[k] = t;  // must be a single letter (key)
+    });
+  });
+  d.body.setAttribute('data-at-shortcutkeys', JSON.stringify(res));
+})(document);
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
