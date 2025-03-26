@@ -1,0 +1,211 @@
+---
+title: "Programming Assignment 4"
+subtitle: "⚔<br/>always remember to remember the template's origin: XARINGAN"
+author: "Merlin Balihaxi (/'mɜːːːː.lɪn/)"
+institute: "Data Science Class, Rutgers University"
+date: "2025-03-25 (updated: `r Sys.Date()`)"
+output:
+  xaringan::moon_reader:
+    css: ["rutgers", "rutgers-fonts"]
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+# loading data_raw.csv
+```{r}
+data_raw <- read.csv("../data_raw/fricatives/fricatives.csv")
+head(data_raw)
+```
+#### codebook (copied from README.md)
+- obs: (character), observation number
+- s_cog: (numeric), center of gravity measurement in Hz for [s].
+- s_skewness: (numeric), skewness measurement for [s].
+- sh_cog: (numeric), center of gravity measurement in Hz for [ʃ].
+- sh_skewness: (numeric), skewness measurement for [ʃ].
+
+---
+# tidying data_raw
+The data has two categories, **centre of gravity** and **skewness** of the **phonemes** [s] and [ʃ].
+
+So we need to tidy the data to thre main variables. *phoneme* (s and ʃ), *cog* (numeric) and *skewness* (numeric).
+
+I do not know if *pivot_long()* function can be used twice or not, so I first make it from wide to "all long", then split from it two new values **cog** and **skewness** by *pivot_wider()* function
+```{r}
+#| warning: FALSE
+#| message: FALSE
+library(tidyverse)
+library(dplyr)
+library("ds4ling")
+data_tidy <- data_raw |> 
+  pivot_longer(
+    cols = c('s_cog', 'sh_cog', 's_skewness', 'sh_skewness'),
+    names_to = c('phoneme', 'measure'),
+    names_sep = "_"
+  ) |>
+  pivot_wider(
+    names_from = measure,
+    values_from = value
+)
+```
+
+---
+# writing data_tidy.csv
+LONG LIVE **GPT**!
+
+I used write.csv long time ago, yet I forgot the format.
+
+[REVISIT YOUR CODE MORE OFTEN!]
+```{r}
+#| warning: FALSE
+#| message: FALSE
+write.csv(data_tidy, "../data_tidy/data_tidy.csv", row.names = FALSE)
+head(data_tidy)
+```
+---
+
+# descriptive statistics
+```{r}
+des_sta <- function(x) {
+  cat("Mean:", mean(x), "\n")
+  cat("SD:", sd(x), "\n")
+  cat("Min:", min(x), "\n")
+  cat("Max:", max(x), "\n")
+  cat("Median:", median(x), "\n")
+} # currently I do not know how to add *group_by()* in a function.
+```
+```{r}
+des_sta (data_tidy$cog) # descriptive statistics for centre of gravity (Hz)
+des_sta (data_tidy$skewness)  # descriptive statistics for skewness
+```
+---
+
+# boxplot for *centre of gravity* ~ *phoneme*
+```{r, fig.width = 6, fig.height = 4}
+#| label: boxplot for phoneme and centre of gravity
+data_tidy |>
+  ggplot() +
+  aes(x = phoneme, y = cog) +
+  geom_boxplot() +
+  labs( x = 'Phoneme', y = 'Centre of Gravity (Hz)') +
+  ggtitle("Centre of Gravity by Phoneme")
+```
+---
+
+# *stat_summary()* for *skewness* ~ *phoneme*
+```{r, fig.width = 6, fig.height = 4}
+#| label: boxplot for phoneme and skewness
+data_tidy |>
+  ggplot() +
+  aes(x = phoneme, y = skewness) +
+  stat_summary(
+    fun.data = mean_sdl,
+    geom = 'pointrange'
+  ) +
+  labs( x = 'Phoneme', y = 'skewness') +
+  ggtitle('skewness by Phoneme')
+```
+---
+
+# linear model of *cog* ~ *skewness* for [s]
+Firstly, the required data needs to be filtered.
+
+```{r}
+s_data <- data_tidy |>
+  filter(phoneme == 's') |>
+  select(phoneme, skewness, cog)
+head(s_data)
+```
+We might need **ln(centre of gravity)** to decrease the effect of the huge variance of *cog*. The next two pages are on this issue.
+---
+
+# linear model of *cog* ~ *skewness* for [s]
+```{r}
+mod1 <- lm(data = s_data, cog ~ skewness)
+summary(mod1)
+```
+The intercept is not statistically significant (p = 0.161), meaning the mean of *cog* is not different from 0 when *skewness* = 0 ($H_0$ not rejected).
+---
+
+# diagnostics I
+```{r fig.width = 8, fig.height = 4}
+ds4ling::diagnosis(mod1)
+```
+- The residuals spread widely (plot 1)
+- The histogram is not that bell-shaped (plot 2)
+- The tails are deviant from the baseline (plot 3)
+- I think I am making up stuff, but I insist using *ln(cog)* instead of *cog*
+
+---
+# linear model of *ln(cog)* ~ *skewness* for [s]
+#### A model after data transformation from *cog* to *ln(cog)*
+```{r}
+mod2 <- lm(data = s_data, log(cog) ~ skewness)
+summary(mod2)
+```
+---
+
+# scatterplot for *ln(cog)* ~ *skewness* for [s]
+```{r fig.width = 6, fig.height = 4}
+s_data |>
+  ggplot() +
+  aes(x = skewness, y = log(cog)) +
+  geom_point() +
+  geom_smooth(method = 'lm', formula = y ~ x)
+```
+#### The scatterplot shows that, for **phoneme [s]**, *ln(cog)* increases when *skewness* increases (positively related).
+
+---
+
+# diagnostics II
+```{r fig.width = 8, fig.height = 4}
+ds4ling::diagnosis(mod2)
+```
+- Now the model fits better (**really?**)
+- The residuals spread more narrowly (plot 1)
+- The histogram is nearly bell-shaped (plot 2, **really?**)
+- The tails not that deviant from the baseline (plot 3, **not ture!**)
+---
+
+# results of model 2 (*mod2*)
+A linear model (*mod2*) is fit to examine the relation between *centre of gravity* and *skewness* in terms of **phoneme [s]**. 
+
+The model is **statistically significant** ($F = 125.1$, $p < 0.001$) and the current predictors have explained 72.27% of the variance in *ln(cog)* ($R^2 = 0.7227$, $Adjusted$ $R^2 = 0.7169$).
+
+The model reveals that *skewness* of [s] is **positively related** to the *log value* of its *centre of gravity* and the relation is statistically significant [ $Es = 0.31922$, $SE = 0.02854$, $t = 11.18$, $p < 0.001$]. This means that for phoneme [s], the increase of *skewness* by 1 unit incurs an increase of *ln(cog)* by 0.31922, or an increase of *cog* by 37.6% ($e^{0.31922} = 1.37605$). The *intercept* is statistically significant [ $Es = 7.40746$, $SE = 0.10898$, $t = 67.97$, $p < 0.001$], meaning when *skewness* = 0, the mean of *ln(cog)* is 7.40746 or *cog* is 1648.235 Hz ($e^{7.40746}$).
+---
+
+#loading assumptions.csv
+```{r}
+assumptions <- read.csv("../data_raw/fricatives/assumptions.csv")
+head(assumptions)
+```
+---
+
+# scatterplot for assumptions.csv
+```{r fig.width = 5, fig.height = 4}
+assumptions |>
+  ggplot() +
+  aes(x = x, y = y) +
+  geom_point()
+```
+#### It's a **DINoSAUR**! [▶️ Watch on YouTube](https://www.youtube.com/watch?v=8Oz7DG76ibY)
+---
+
+# why it is not appropriate to fit a model
+```{r fig.width = 9, fig.height = 4}
+mod3 <- lm(data = assumptions, y ~ x)
+ds4ling::diagnosis(mod3)
+```
+- visually, it is a dinosaur if we do the scatterplot
+- the residuals plot shows the spreading is very random...
+- the histogram shows it is not bell-shaped at all
+- the QQ-plot shows that the data at two ends highly deviate from the baseline
+---
+
+class: center, middle
+
+# Thanks!
+
+slides created via the R package [**xaringan**](https://github.com/yihui/xaringan)
